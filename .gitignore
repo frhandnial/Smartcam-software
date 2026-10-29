@@ -1,0 +1,16 @@
+# private: camera snapshots, the event log, logs and settings (config.json can hold a camera password)
+data/
+config.json
+config.json.tmp
+*.log
+
+# the YOLO11n detector is AGPL-3.0 (Ultralytics), so it isn't shared here; README says how to get it
+models/*.onnx
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# keys
+.env

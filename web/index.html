@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartCam</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%230d1628'/%3E%3Ccircle cx='12' cy='12' r='5.5' fill='none' stroke='%233ddc84' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2' fill='%233ddc84'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #070d1a; --panel: #0d1628; --panel2: #111d33; --line: #1d2a44; --line2: #2a3a5c;
+    --text: #e6edf7; --muted: #8a9ab5; --faint: #5d6d8a;
+    --accent: #3ddc84; --person: #3ddc84; --vehicle: #4da3ff; --animal: #ffb547; --bag: #b48cff; --object: #9aa4b2;
+    --alert: #ff4d5e; --amber: #ffb547;
+    --radius: 14px; --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+         -webkit-font-smoothing: antialiased; }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+  svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* ---------- layout ---------- */
+  .app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--line);
+           background: linear-gradient(180deg, #0b1426, var(--bg)); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: .2px; font-size: 16px; }
+  .brand .mark { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--panel2);
+                 border: 1px solid var(--line2); color: var(--accent); }
+  .brand small { color: var(--muted); font-weight: 450; font-size: 13px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 11px; border-radius: 99px; font-size: 12px;
+          font-weight: 650; letter-spacing: .6px; border: 1px solid currentColor; }
+  .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.live { color: var(--accent); } .pill.live::before { animation: blink 1.6s infinite; }
+  .pill.connecting { color: var(--amber); } .pill.offline, .pill.down { color: var(--alert); }
+  @keyframes blink { 50% { opacity: .25; } }
+  .metrics { display: flex; gap: 16px; color: var(--muted); font-size: 12px; margin-left: 4px; }
+  .metrics b { color: var(--text); font-family: var(--mono); font-weight: 500; }
+  .meter { display: inline-block; width: 54px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .4s; }
+  .spacer { flex: 1; }
+  .btn { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line2);
+         background: var(--panel2); font-size: 13px; transition: border-color .15s, background .15s; white-space: nowrap; }
+  .btn:hover { border-color: #3d5180; background: #15233e; }
+  .btn.primary { background: var(--accent); color: #06210f; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { background: #5ce79a; }
+  .btn.ghost { background: transparent; }
+  .btn.danger:hover { border-color: var(--alert); color: var(--alert); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .iconbtn { padding: 7px; }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; padding: 16px 18px; min-height: 0; }
+  .col { display: flex; flex-direction: column; gap: 16px; min-height: 0; }
+  .col.right { overflow-y: auto; padding-right: 2px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+  .card-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px 0; }
+  .card-h h2 { margin: 0; font-size: 12px; font-weight: 650; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .card-b { padding: 12px 14px 14px; }
+
+  /* ---------- live view ---------- */
+  .video { padding: 10px; }
+  .stage { display: flex; justify-content: center; background: #050a14; border-radius: 10px; overflow: hidden; }
+  .frame { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+  .frame img { display: block; max-width: 100%; max-height: 56vh; min-height: 200px; background: #050a14; }
+  .frame canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  body.zoning .frame canvas { pointer-events: auto; cursor: crosshair; }
+  .tools { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; line-height: normal; }
+  .tools .btn { background: rgba(7, 13, 26, .78); backdrop-filter: blur(6px); }
+  body.zoning .tools { display: none; }
+
+  .now { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 4px 2px; }
+  .chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 9px; border-radius: 10px; background: var(--panel2);
+          border: 1px solid var(--line); }
+  .chip b { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+  .chip span { color: var(--muted); font-size: 12px; }
+  .chip.zero { opacity: .45; }
+  .chip svg { color: var(--c); }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 0; }
+  .tag { font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #0a1222; border: 1px solid var(--line); color: var(--muted); }
+  .tag.w { color: var(--text); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+  .tag.w::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--c); margin-right: 6px; vertical-align: 1px; }
+  .tag.alert { border-color: var(--alert); color: #ffd3d7; --c: var(--alert); }
+
+  .zonebar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 4px 2px; }
+  .zonebar .hint { color: var(--muted); font-size: 13px; flex: 1 1 260px; }
+  .zonebar input { background: #0a1222; border: 1px solid var(--line2); border-radius: 9px; padding: 6px 10px; width: 170px; }
+  .zlist { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 4px 0; width: 100%; }
+  .ztag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 8px; font-size: 12px;
+          border: 1px solid color-mix(in srgb, var(--alert) 55%, transparent); background: color-mix(in srgb, var(--alert) 10%, transparent); }
+  .ztag button { border: 0; background: transparent; padding: 2px 5px; border-radius: 6px; color: var(--muted); }
+  .ztag button:hover { color: var(--alert); background: #2a1520; }
+
+  /* ---------- events ---------- */
+  .events { display: flex; flex-direction: column; min-height: 260px; flex: 1; }
+  .filters { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+  .filters button { border: 1px solid transparent; background: transparent; color: var(--muted); padding: 4px 10px; border-radius: 8px; font-size: 12px; }
+  .filters button.on { color: var(--text); background: var(--panel2); border-color: var(--line2); }
+  .events input[type=date] { background: #0a1222; border: 1px solid var(--line2); border-radius: 8px; padding: 3px 8px; font-size: 12px; color-scheme: dark; }
+  .evlist { overflow-y: auto; padding: 10px 10px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .ev { display: grid; grid-template-columns: 112px 1fr; gap: 12px; padding: 8px; border-radius: 11px; background: var(--panel2);
+        border: 1px solid var(--line); border-left: 3px solid var(--c, var(--object)); animation: rise .35s ease; }
+  .ev.alert { background: color-mix(in srgb, var(--alert) 8%, var(--panel2)); border-color: color-mix(in srgb, var(--alert) 35%, var(--line)); border-left-color: var(--alert); }
+  @keyframes rise { from { opacity: 0; transform: translateY(-4px); } }
+  .thumb { padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: #050a14; aspect-ratio: 4 / 3; width: 112px; align-self: start; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .2s; }
+  .thumb:hover img { transform: scale(1.06); }
+  .ev-top { display: flex; align-items: baseline; gap: 10px; }
+  .ev-msg { font-weight: 600; }
+  .ev-time { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .ev-meta { font-size: 12px; color: var(--muted); margin-top: 2px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .ev-meta .here { color: var(--accent); }
+  .badge { font-size: 10.5px; font-weight: 700; letter-spacing: .6px; padding: 1px 6px; border-radius: 5px; background: var(--alert); color: #fff; }
+  .ev-ai { margin-top: 6px; font-size: 13px; color: #c9d5e8; display: flex; gap: 6px; }
+  .ev-ai svg { width: 14px; height: 14px; margin-top: 3px; color: var(--bag); }
+  .empty { color: var(--faint); text-align: center; padding: 36px 12px; font-size: 13px; }
+
+  /* ---------- AI ---------- */
+  .ai-now { font-size: 16.5px; line-height: 1.5; min-height: 50px; }
+  .ai-now.busy { color: var(--muted); }
+  .ai-meta { font-size: 12px; color: var(--faint); margin-top: 6px; }
+  .ai-err { font-size: 12px; color: #ff9aa4; margin-top: 8px; }
+  .ai-old { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 7px; }
+  .ai-old div { font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .ai-old time { font-family: var(--mono); font-size: 11px; color: var(--faint); margin-right: 6px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ask { display: flex; gap: 8px; margin-top: 12px; }
+  .ask input { flex: 1; min-width: 0; background: #0a1222; border: 1px solid var(--line2); border-radius: 10px; padding: 8px 11px; }
+  .ask input:focus, .zonebar input:focus, .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .answer { margin-top: 12px; padding: 11px 12px; border-radius: 10px; background: #0a1222; border: 1px solid var(--line); font-size: 13.5px; }
+  .answer .q { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .answer ul { margin: 0; padding-left: 18px; } .answer li { margin: 3px 0; }
+  .switch { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 13px; cursor: pointer; }
+  .switch input { appearance: none; width: 34px; height: 20px; border-radius: 99px; background: var(--line2); position: relative; cursor: pointer; flex: none; margin: 0; transition: background .2s; }
+  .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: left .2s; }
+  .switch input:checked { background: var(--accent); }
+  .switch input:checked::after { left: 17px; }
+  .switch small { display: block; color: var(--faint); font-size: 11.5px; }
+  .shimmer { background: linear-gradient(90deg, var(--muted) 0%, var(--text) 50%, var(--muted) 100%); background-size: 200% 100%;
+             -webkit-background-clip: text; background-clip: text; color: transparent; animation: shim 1.4s linear infinite; }
+  @keyframes shim { to { background-position: -200% 0; } }
+
+  /* ---------- today ---------- */
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .tile { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 9px 10px; }
+  .tile b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 600; line-height: 1.15; }
+  .tile span { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .tile span::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--c); }
+  .tile.al b { color: var(--alert); }
+  .bars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; height: 84px; margin-top: 14px; }
+  .bar { display: flex; flex-direction: column-reverse; height: 100%; border-radius: 3px; background: #0a1222; overflow: hidden; }
+  .bar i { display: block; width: 100%; }
+  .bar.nowh { outline: 1px solid var(--line2); }
+  .axis { display: grid; grid-template-columns: repeat(4, 1fr); font-size: 10.5px; color: var(--faint); margin-top: 4px; font-family: var(--mono); }
+  .legend { display: flex; gap: 12px; font-size: 11.5px; color: var(--muted); margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--c); margin-right: 5px; }
+
+  /* ---------- overlays ---------- */
+  .toast { position: fixed; left: 50%; top: 66px; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .toast div { display: flex; align-items: center; gap: 9px; padding: 10px 16px; border-radius: 12px; background: #2a0d14; border: 1px solid var(--alert);
+               color: #ffe1e4; font-weight: 600; box-shadow: 0 10px 30px rgba(0,0,0,.5); animation: drop .3s ease; }
+  .toast div.ok { background: #0c2418; border-color: var(--accent); color: #d6ffe6; }
+  @keyframes drop { from { opacity: 0; transform: translateY(-8px); } }
+  .shade { position: fixed; inset: 0; background: rgba(3, 6, 14, .72); backdrop-filter: blur(3px); z-index: 40; display: grid; place-items: center; padding: 20px; }
+  .lightbox { max-width: min(1100px, 100%); }
+  .lightbox img { max-width: 100%; max-height: 76vh; border-radius: 12px; display: block; border: 1px solid var(--line2); }
+  .lightbox p { margin: 10px 2px 0; } .lightbox .ev-ai { font-size: 14px; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); border-left: 1px solid var(--line2);
+            z-index: 45; display: flex; flex-direction: column; box-shadow: -20px 0 50px rgba(0,0,0,.45); animation: slide .25s ease; }
+  @keyframes slide { from { transform: translateX(30px); opacity: 0; } }
+  .drawer .card-h { padding: 16px 18px 6px; }
+  .drawer form { overflow-y: auto; padding: 6px 18px 18px; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field input[type=text], .field input[type=number], .field select { width: 100%; background: #0a1222; border: 1px solid var(--line2); border-radius: 9px; padding: 7px 10px; }
+  .field select { color-scheme: dark; }
+  .field small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 4px; }
+  .field input[type=range] { width: 100%; accent-color: var(--accent); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .checks { display: flex; gap: 14px; } .checks label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); margin: 0; }
+  .checks input { accent-color: var(--accent); }
+  .section { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--faint); margin-top: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .drawer footer { display: flex; gap: 8px; padding: 14px 18px; border-top: 1px solid var(--line); }
+  .stopped { position: fixed; inset: 0; background: var(--bg); z-index: 60; display: grid; place-items: center; text-align: center; color: var(--muted); }
+  .stopped h1 { color: var(--text); font-size: 22px; margin: 0 0 6px; }
+
+  @media (max-width: 1100px) {
+    .app { height: auto; min-height: 100vh; }
+    main { grid-template-columns: 1fr; }
+    .col.right { overflow: visible; }
+    .events { min-height: 420px; }
+    .metrics { display: none; }
+  }
+  @media (max-width: 640px) {
+    header { flex-wrap: wrap; padding: 10px 16px; } main { padding: 12px 16px; }
+    .brand small { display: none; } .btn .lbl { display: none; }
+    .ev { grid-template-columns: 84px 1fr; } .thumb { width: 84px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5 21v-1a7 7 0 0 1 14 0v1"/></symbol>
+  <symbol id="i-vehicle" viewBox="0 0 24 24"><path d="M5 17h14v-5l-2-5H7l-2 5v5z"/><path d="M5 12h14"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/></symbol>
+  <symbol id="i-animal" viewBox="0 0 24 24"><circle cx="5.5" cy="10" r="2"/><circle cx="9.5" cy="5.5" r="2"/><circle cx="14.5" cy="5.5" r="2"/><circle cx="18.5" cy="10" r="2"/><path d="M8 17c0-3 2-5 4-5s4 2 4 5c0 2-2 3-4 3s-4-1-4-3z"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="13" rx="2"/><path d="M9 8V5a3 3 0 0 1 6 0v3"/></symbol>
+  <symbol id="i-zone" viewBox="0 0 24 24"><path d="M4 7l6-3 10 4-2 11-12 1z"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="4" r="1.2"/><circle cx="20" cy="8" r="1.2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24"><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/><path d="M12 2v10"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l2-2h6l2 2h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></symbol>
+</svg>
+
+<div class="app">
+  <header>
+    <div class="brand"><div class="mark"><svg class="i"><use href="#i-eye"/></svg></div>SmartCam <small id="camName">Camera 1</small></div>
+    <span class="pill connecting" id="status">CONNECTING</span>
+    <div class="metrics">
+      <span>View <b id="fps">–</b> fps</span>
+      <span>AI vision <b id="detms">–</b> ms</span>
+      <span>Activity <span class="meter"><i id="motion"></i></span></span>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="zoneBtn" title="Draw areas to watch"><svg class="i"><use href="#i-zone"/></svg><span class="lbl">Zones</span></button>
+    <button class="btn" id="setBtn" title="Settings"><svg class="i"><use href="#i-gear"/></svg><span class="lbl">Settings</span></button>
+    <button class="btn ghost danger iconbtn" id="quitBtn" title="Stop SmartCam"><svg class="i"><use href="#i-power"/></svg></button>
+  </header>
+
+  <main>
+    <section class="col">
+      <div class="card video">
+        <div class="stage">
+          <div class="frame" id="frame">
+            <img id="stream" src="/stream" alt="Live camera">
+            <canvas id="zcanvas"></canvas>
+            <div class="tools">
+              <button class="btn" id="snapBtn" title="Save a snapshot"><svg class="i"><use href="#i-camera"/></svg><span class="lbl">Snapshot</span></button>
+              <button class="btn iconbtn" id="fullBtn" title="Full screen"><svg class="i"><use href="#i-expand"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div id="nowBox">
+          <div class="now" id="chips"></div>
+          <div class="tags" id="tags"></div>
+        </div>
+        <div class="zonebar" id="zonebar" hidden>
+          <span class="hint" id="zhint">Click on the picture to place the corners of an area. Click the first corner again (or press Enter) to finish.</span>
+          <span id="zname" hidden><input id="znameInput" maxlength="40" placeholder="Name, e.g. Front door"></span>
+          <button class="btn" id="zundo">Undo point</button>
+          <button class="btn primary" id="zsave" hidden>Save zone</button>
+          <button class="btn" id="zdone">Done</button>
+          <div class="zlist" id="zlist"></div>
+        </div>
+      </div>
+
+      <div class="card events">
+        <div class="card-h">
+          <h2>Timeline</h2>
+          <input type="date" id="day">
+          <div class="filters" id="filters">
+            <button data-f="all" class="on">All</button><button data-f="alert">Alerts</button><button data-f="person">People</button>
+            <button data-f="vehicle">Vehicles</button><button data-f="animal">Animals</button><button data-f="manual">Snapshots</button>
+          </div>
+        </div>
+        <div class="evlist" id="events"></div>
+      </div>
+    </section>
+
+    <aside class="col right">
+      <div class="card">
+        <div class="card-h"><svg class="i" style="color:var(--bag)"><use href="#i-spark"/></svg><h2>What's happening</h2></div>
+        <div class="card-b">
+          <div class="ai-now" id="aiNow">Waiting for something to happen…</div>
+          <div class="ai-meta" id="aiMeta"></div>
+          <div class="ai-err" id="aiErr" hidden></div>
+          <div class="ai-old" id="aiOld" hidden></div>
+          <form class="ask" id="askForm">
+            <input id="askInput" maxlength="300" placeholder="Ask the camera… e.g. Is the door open?" autocomplete="off">
+            <button class="btn primary" id="askBtn">Ask</button>
+          </form>
+          <div class="row" style="margin-top:8px">
+            <button class="btn" id="descBtn"><svg class="i"><use href="#i-eye"/></svg>Describe now</button>
+            <button class="btn" id="sumBtn"><svg class="i"><use href="#i-spark"/></svg>Summarise today</button>
+          </div>
+          <div class="answer" id="answer" hidden></div>
+          <label class="switch"><input type="checkbox" id="aiAuto"><span>Describe events automatically <small id="aiAutoNote">Sends one snapshot to Google Gemini when something happens.</small></span></label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h2 id="statsTitle">Today</h2></div>
+        <div class="card-b">
+          <div class="tiles">
+            <div class="tile" style="--c:var(--person)"><b id="tPerson">0</b><span>People</span></div>
+            <div class="tile" style="--c:var(--vehicle)"><b id="tVehicle">0</b><span>Vehicles</span></div>
+            <div class="tile" style="--c:var(--animal)"><b id="tAnimal">0</b><span>Animals</span></div>
+            <div class="tile al" style="--c:var(--alert)"><b id="tAlerts">0</b><span>Alerts</span></div>
+          </div>
+          <div class="bars" id="bars"></div>
+          <div class="axis"><span>00</span><span>06</span><span>12</span><span>18</span></div>
+          <div class="legend"><span style="--c:var(--person)">People</span><span style="--c:var(--vehicle)">Vehicles</span><span style="--c:var(--animal)">Animals</span></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="shade" id="lightbox" hidden>
+  <div class="lightbox"><img id="lbImg" alt=""><p id="lbText"></p><div class="ev-ai" id="lbAi"></div></div>
+</div>
+
+<div class="shade" id="setShade" hidden></div>
+<div class="drawer" id="drawer" hidden>
+  <div class="card-h"><h2>Settings</h2><div class="spacer"></div><button class="btn ghost iconbtn" id="setClose"><svg class="i"><use href="#i-x"/></svg></button></div>
+  <form id="setForm">
+    <div class="field">
+      <label>Camera</label>
+      <select id="sCamSel">
+        <option value="0">Built-in webcam</option>
+        <option value="1">Second camera (USB)</option>
+        <option value="demo">Demo video (street scene)</option>
+        <option value="custom">IP camera or video file…</option>
+      </select>
+      <input type="text" id="sCam" placeholder="rtsp://user:pass@192.168.1.20:554/stream1" style="margin-top:6px" hidden>
+      <small id="sCamHelp" hidden>CCTV / IP camera: its RTSP address. Phone as camera: the "IP Webcam" app's http://…:8080/video. Or a full path to a video file.</small>
+    </div>
+    <div class="field"><label>Camera name</label><input type="text" id="sName" maxlength="40"></div>
+    <div class="field"><label>Watch for</label>
+      <div class="checks"><label><input type="checkbox" value="person" class="sWatch">People</label><label><input type="checkbox" value="vehicle" class="sWatch">Vehicles</label><label><input type="checkbox" value="animal" class="sWatch">Animals</label></div>
+    </div>
+    <div class="section">Alerts</div>
+    <div class="two">
+      <div class="field"><label>Loitering after (s)</label><input type="number" id="sLoiter" min="0" max="3600"><small>0 = off</small></div>
+      <div class="field"><label>Crowd of (people)</label><input type="number" id="sCrowd" min="0" max="100"><small>0 = off</small></div>
+    </div>
+    <div class="two">
+      <div class="field"><label>Unattended bag after (s)</label><input type="number" id="sAlone" min="0" max="3600"><small>0 = off</small></div>
+      <div class="field"><label>Alert sound</label><div class="checks"><label><input type="checkbox" id="sSound">Beep on alerts</label></div></div>
+    </div>
+    <div class="section">Detection</div>
+    <div class="field"><label>Looks per second while something moves: <b id="sFpsVal"></b></label><input type="range" id="sFps" min="1" max="10" step="1"><small>Higher follows fast movement better but uses more CPU.</small></div>
+    <div class="field"><label>Sureness needed: <b id="sConfVal"></b></label><input type="range" id="sConf" min="0.2" max="0.8" step="0.05"><small>Lower finds more (and makes more mistakes).</small></div>
+    <div class="section">AI descriptions</div>
+    <div class="two">
+      <div class="field"><label>At most one every (s)</label><input type="number" id="sGap" min="10" max="3600"></div>
+      <div class="field"><label>Daily limit</label><input type="number" id="sLimit" min="0" max="2000"></div>
+    </div>
+    <div class="section">Storage</div>
+    <div class="field"><label>Keep snapshots and events for (days)</label><input type="number" id="sKeep" min="1" max="365"></div>
+  </form>
+  <footer><button class="btn primary" id="setSave">Save</button><button class="btn" id="setCancel">Cancel</button></footer>
+</div>
+
+<div class="stopped" id="stopped" hidden><div><h1>SmartCam has stopped</h1>You can close this window. Start it again with run.bat.</div></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const CATS = { person: "People", vehicle: "Vehicles", animal: "Animals", bag: "Bags" };
+const S = { rev: null, day: today(), liveDay: today(), events: new Map(), nodes: new Map(), filter: "all", cfg: null,
+            alerted: new Set(), started: Date.now() / 1000, aiSig: "", online: true };
+
+function pad(n) { return String(n).padStart(2, "0"); }
+function today() { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+function clock(ts) { const d = new Date(ts * 1000); return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds()); }
+function dur(s) {
+  s = Math.max(0, Math.round(s));
+  if (s < 60) return s + " s";
+  if (s < 3600) return Math.floor(s / 60) + " min" + (s % 60 ? " " + (s % 60) + " s" : "");
+  return Math.floor(s / 3600) + " h " + Math.floor(s % 3600 / 60) + " min";
+}
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") el.className = v; else if (k === "style") el.style.cssText = v; else if (k.startsWith("on")) el[k] = v; else el.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+}
+function icon(name, style) {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("class", "i"); if (style) s.setAttribute("style", style);
+  const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + name); s.append(u);
+  return s;
+}
+async function api(path, body) {
+  const opt = body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+function toast(text, ok) {
+  const el = h("div", { class: ok ? "ok" : "" }, icon(ok ? "spark" : "alert"), text);
+  $("#toast").prepend(el);
+  setTimeout(() => el.remove(), ok ? 2500 : 7000);
+}
+function snapUrl(rel) { return "/snap/" + rel.split("/").map(encodeURIComponent).join("/"); }
+
+/* ---------------- alert sound ---------------- */
+let actx = null;
+function soundOn() { try { return localStorage.getItem("smartcam.sound") !== "0"; } catch (e) { return true; } }
+function beep() {
+  if (!soundOn()) return;
+  try {
+    actx = actx || new AudioContext();
+    [0, 0.18].forEach((t, i) => {
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = i ? 660 : 880; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, actx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.18, actx.currentTime + t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + t + 0.16);
+      o.connect(g).connect(actx.destination); o.start(actx.currentTime + t); o.stop(actx.currentTime + t + 0.18);
+    });
+  } catch (e) { /* no audio device */ }
+}
+
+/* ---------------- live state ---------------- */
+function renderLive(s) {
+  const st = $("#status"), cam = s.camera.status;
+  st.className = "pill " + cam;
+  st.textContent = cam === "live" ? "LIVE" : cam === "connecting" ? "CONNECTING" : "NO SIGNAL";
+  st.title = s.camera.message || "";
+  $("#camName").textContent = s.camera.name;
+  $("#fps").textContent = cam === "live" ? s.fps : "–";
+  $("#detms").textContent = s.detect_ms || "–";
+  $("#motion").style.width = s.motion + "%";
+
+  const counts = { person: 0, vehicle: 0, animal: 0, bag: 0 }, others = {};
+  for (const o of s.objects) {
+    if (o.category in counts) counts[o.category]++; else others[o.label] = (others[o.label] || 0) + 1;
+  }
+  $("#chips").replaceChildren(...Object.entries(CATS).map(([c, name]) =>
+    h("div", { class: "chip" + (counts[c] ? "" : " zero"), style: "--c:var(--" + c + ")" }, icon(c), h("b", {}, counts[c]), h("span", {}, name))));
+  const tags = s.objects.filter(o => o.category !== "object").map(o =>
+    h("span", { class: "tag w" + (o.alert ? " alert" : ""), style: "--c:var(--" + o.category + ")",
+                title: o.zones.length ? "In zone: " + o.zones.join(", ") : "" }, o.label + " #" + o.id + " · " + dur(o.dwell)));
+  for (const [label, n] of Object.entries(others)) tags.push(h("span", { class: "tag" }, n > 1 ? label + " ×" + n : label));
+  $("#tags").replaceChildren(...tags);
+
+  renderAI(s.ai);
+}
+
+function renderAI(a) {
+  const sig = JSON.stringify([a.narration.map(n => n.ts), a.busy, a.error, a.key, a.auto, a.today]);
+  if (sig === S.aiSig) return;
+  S.aiSig = sig;
+  const now = $("#aiNow"), last = a.narration[0];
+  if (!a.key) {
+    now.className = "ai-now busy";
+    now.textContent = "Add your free Gemini key (GEMINI_API_KEY) to get plain-English descriptions. Detection and alerts work without it.";
+  } else if (a.busy && !last) {
+    now.className = "ai-now shimmer"; now.textContent = "Looking at the picture…";
+  } else if (last) {
+    now.className = "ai-now" + (a.busy ? " shimmer" : ""); now.textContent = last.text;
+  } else {
+    now.className = "ai-now busy"; now.textContent = "Waiting for something to happen…";
+  }
+  $("#aiMeta").textContent = last ? (last.source === "auto" ? "Auto" : "On request") + " · " + clock(last.ts) + (a.busy ? " · looking again…" : "") : "";
+  $("#aiErr").hidden = !a.error; $("#aiErr").textContent = a.error;
+  const old = a.narration.slice(1, 4);
+  $("#aiOld").hidden = !old.length;
+  $("#aiOld").replaceChildren(...old.map(n => h("div", { title: n.text }, h("time", {}, clock(n.ts).slice(0, 5)), n.text)));
+  $("#aiAuto").checked = a.auto;
+  $("#aiAutoNote").textContent = "Sends one snapshot to Google Gemini when something happens (" + a.today + "/" + a.limit + " today).";
+}
+
+/* ---------------- timeline ---------------- */
+function matches(e) {
+  const f = S.filter;
+  return f === "all" || (f === "alert" ? e.level === "alert" : f === "manual" ? e.kind === "manual" : e.category === f && e.kind !== "manual");
+}
+function eventEl(e) {
+  const c = e.level === "alert" ? "alert" : e.category === "object" ? "object" : e.category;
+  const meta = [];
+  if (e.level === "alert") meta.push(h("span", { class: "badge" }, "ALERT"));
+  if (e.kind === "visit") meta.push(e.ended ? h("span", {}, "stayed " + dur(e.ended - e.ts)) : h("span", { class: "here" }, "● still here"));
+  const thumb = e.snapshot
+    ? h("button", { class: "thumb", title: "Open snapshot", onclick: () => openSnap(e) }, h("img", { src: snapUrl(e.snapshot), loading: "lazy", alt: "" }))
+    : h("div", { class: "thumb" });
+  return h("div", { class: "ev" + (e.level === "alert" ? " alert" : ""), style: "--c:var(--" + c + ")" },
+    thumb,
+    h("div", {},
+      h("div", { class: "ev-top" }, h("span", { class: "ev-msg" }, e.message), h("span", { class: "ev-time" }, clock(e.ts))),
+      meta.length ? h("div", { class: "ev-meta" }, meta) : null,
+      e.ai_text ? h("div", { class: "ev-ai" }, icon("spark"), h("span", {}, e.ai_text)) : null));
+}
+function renderEvents() {
+  const list = [...S.events.values()].filter(matches).sort((a, b) => b.id - a.id).slice(0, 300);
+  const kids = list.map(e => {
+    let n = S.nodes.get(e.id);
+    if (!n || n.rev !== e.rev) { n = { rev: e.rev, el: eventEl(e) }; S.nodes.set(e.id, n); }
+    return n.el;
+  });
+  if (!kids.length) {
+    kids.push(h("div", { class: "empty" }, S.events.size ? "Nothing matches this filter." :
+      S.day === today() ? "Nothing has happened yet today. Visits, alerts and snapshots will appear here." : "Nothing was logged on this day."));
+  }
+  $("#events").replaceChildren(...kids);
+}
+async function loadDay(day) {
+  const d = await api("/api/events?day=" + day);
+  S.day = day; S.events = new Map(d.events.map(e => [e.id, e])); S.nodes = new Map();
+  if (S.rev === null) S.rev = d.rev;
+  for (const e of d.events) if (e.level === "alert") S.alerted.add(e.id);
+  $("#statsTitle").textContent = day === today() ? "Today" : day;
+  renderEvents(); renderStats(d.stats);
+}
+function openSnap(e) {
+  $("#lbImg").src = snapUrl(e.snapshot);
+  $("#lbText").textContent = clock(e.ts) + " · " + e.message + (e.kind === "visit" && e.ended ? " · stayed " + dur(e.ended - e.ts) : "");
+  $("#lbAi").replaceChildren(...(e.ai_text ? [icon("spark"), h("span", {}, e.ai_text)] : []));
+  $("#lightbox").hidden = false;
+}
+
+/* ---------------- stats ---------------- */
+function renderStats(st) {
+  $("#tPerson").textContent = st.totals.person; $("#tVehicle").textContent = st.totals.vehicle;
+  $("#tAnimal").textContent = st.totals.animal; $("#tAlerts").textContent = st.totals.alerts;
+  const hr = st.hourly, max = Math.max(1, ...hr.person.map((v, i) => v + hr.vehicle[i] + hr.animal[i]));
+  const nowH = S.day === today() ? new Date().getHours() : -1;
+  $("#bars").replaceChildren(...hr.person.map((p, i) => {
+    const v = hr.vehicle[i], a = hr.animal[i];
+    return h("div", { class: "bar" + (i === nowH ? " nowh" : ""), title: pad(i) + ":00 · " + p + " people, " + v + " vehicles, " + a + " animals" },
+      ...[["person", p], ["vehicle", v], ["animal", a]].map(([c, n]) => h("i", { style: "height:" + (n / max * 100) + "%;background:var(--" + c + ")" })));
+  }));
+}
+let statsTimer = null;
+function refreshStats() {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(async () => { try { renderStats(await api("/api/stats?day=" + S.day)); } catch (e) {} }, 700);
+}
+
+/* ---------------- polling ---------------- */
+async function poll() {
+  try {
+    const s = await api("/api/state" + (S.rev === null ? "" : "?rev=" + S.rev));
+    if (!S.online) { S.online = true; reloadStream(); }
+    if (S.rev === null) S.rev = s.rev;
+    if (S.liveDay !== today()) {  // past midnight: follow the new day if we were showing the old "today"
+      const was = S.liveDay; S.liveDay = today(); $("#day").max = S.liveDay;
+      if (S.day === was) { $("#day").value = S.liveDay; loadDay(S.liveDay); }
+    }
+    renderLive(s);
+    if (s.changes && s.changes.length) {
+      for (const e of s.changes) {
+        if (e.day === S.day) S.events.set(e.id, e);
+        if (e.level === "alert" && !S.alerted.has(e.id)) {
+          S.alerted.add(e.id);
+          if (e.ts >= S.started - 5) { toast(e.message); beep(); }
+        }
+      }
+      S.rev = s.rev;
+      renderEvents(); refreshStats();
+    }
+  } catch (err) {
+    if (S.online) { S.online = false; const st = $("#status"); st.className = "pill down"; st.textContent = "APP NOT RUNNING"; }
+  }
+}
+function reloadStream() { $("#stream").src = "/stream?" + Date.now(); }
+$("#stream").addEventListener("error", () => setTimeout(reloadStream, 2000));
+
+/* ---------------- AI buttons ---------------- */
+function showAnswer(q, text, ok) {
+  const box = $("#answer"); box.hidden = false;
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const bullets = lines.length > 1 && lines.every(l => /^[-*•]\s/.test(l));
+  box.replaceChildren(
+    q ? h("div", { class: "q" }, q) : null,
+    bullets ? h("ul", {}, lines.map(l => h("li", {}, l.replace(/^[-*•]\s+/, "")))) : h("div", { style: ok === false ? "color:#ff9aa4" : "" }, text));
+}
+async function aiAction(btn, path, body, q) {
+  btn.disabled = true; const label = btn.innerHTML;
+  btn.innerHTML = "<span class='shimmer'>Thinking…</span>";
+  try { const r = await api(path, body); showAnswer(q, r.text, r.ok); }
+  catch (e) { showAnswer(q, "Couldn't reach SmartCam.", false); }
+  finally { btn.disabled = false; btn.innerHTML = label; }
+}
+$("#askForm").addEventListener("submit", ev => {
+  ev.preventDefault();
+  const q = $("#askInput").value.trim(); if (!q) return;
+  aiAction($("#askBtn"), "/api/ask", { question: q }, "You asked: " + q);
+  $("#askInput").value = "";
+});
+$("#descBtn").onclick = () => aiAction($("#descBtn"), "/api/describe", {}, "Right now:");
+$("#sumBtn").onclick = () => aiAction($("#sumBtn"), "/api/summary", {}, "Today so far:");
+$("#aiAuto").onchange = async ev => { S.cfg = await api("/api/config", { ai_auto: ev.target.checked }); S.aiSig = ""; };
+
+/* ---------------- snapshot, full screen, quit ---------------- */
+$("#snapBtn").onclick = async () => { const r = await api("/api/snapshot", {}); if (r.ok) toast("Snapshot saved", true); };
+$("#fullBtn").onclick = () => document.fullscreenElement ? document.exitFullscreen() : $("#frame").requestFullscreen();
+$("#quitBtn").onclick = async () => {
+  if (!confirm("Stop SmartCam? The camera will stop watching until you start it again.")) return;
+  try { await api("/api/quit", {}); } catch (e) {}
+  $("#stream").src = ""; $("#stopped").hidden = false; clearInterval(pollTimer);
+};
+
+/* ---------------- timeline controls ---------------- */
+$("#filters").onclick = ev => {
+  const b = ev.target.closest("button"); if (!b) return;
+  S.filter = b.dataset.f;
+  for (const x of $("#filters").children) x.classList.toggle("on", x === b);
+  renderEvents();
+};
+$("#day").value = S.day; $("#day").max = S.day;
+$("#day").onchange = ev => loadDay(ev.target.value || today());
+$("#lightbox").onclick = () => { $("#lightbox").hidden = true; };
+
+/* ---------------- zones ---------------- */
+const Z = { on: false, pts: [], hover: null, naming: false };
+const cv = $("#zcanvas");
+function zoneMode(on) {
+  Z.on = on; Z.pts = []; Z.naming = false; Z.hover = null;
+  document.body.classList.toggle("zoning", on);
+  $("#zonebar").hidden = !on; $("#nowBox").hidden = on;
+  zoneUI(); drawZones();
+}
+function zoneUI() {
+  $("#zname").hidden = !Z.naming; $("#zsave").hidden = !Z.naming; $("#zundo").hidden = Z.naming || !Z.pts.length;
+  $("#zhint").textContent = Z.naming ? "Give this area a name, then save it." :
+    Z.pts.length ? "Keep clicking corners. Click the first corner (or press Enter) to close the shape." :
+    "Click on the picture to place the corners of an area to watch. Anyone walking into it raises an alert.";
+  const zones = (S.cfg && S.cfg.zones) || [];
+  $("#zlist").replaceChildren(...zones.map((z, i) => h("span", { class: "ztag" }, z.name,
+    h("button", { title: "Delete zone", onclick: () => deleteZone(i) }, "✕"))));
+}
+function drawZones() {
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+  if (!Z.on || !Z.pts.length) return;
+  const P = p => [p[0] * r.width, p[1] * r.height];
+  g.strokeStyle = "#ff4d5e"; g.fillStyle = "rgba(255,77,94,.18)"; g.lineWidth = 2;
+  g.beginPath(); Z.pts.forEach((p, i) => { const [x, y] = P(p); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  if (Z.naming) { g.closePath(); g.fill(); } g.stroke();
+  if (Z.hover && !Z.naming) {
+    g.setLineDash([6, 5]); g.beginPath(); g.moveTo(...P(Z.pts[Z.pts.length - 1])); g.lineTo(...P(Z.hover)); g.stroke(); g.setLineDash([]);
+  }
+  Z.pts.forEach((p, i) => { const [x, y] = P(p); g.beginPath(); g.arc(x, y, i === 0 && Z.pts.length >= 3 ? 7 : 4.5, 0, 7);
+    g.fillStyle = i === 0 ? "#ff4d5e" : "#fff"; g.fill(); });
+}
+function finishShape() {
+  if (Z.pts.length < 3) return;
+  Z.naming = true; Z.hover = null;
+  $("#znameInput").value = "Zone " + (((S.cfg && S.cfg.zones) || []).length + 1);
+  zoneUI(); drawZones(); $("#znameInput").select();
+}
+async function saveZone() {
+  const zones = [...S.cfg.zones];
+  let name = $("#znameInput").value.trim() || "Zone " + (zones.length + 1), base = name, n = 2;
+  while (zones.some(z => z.name === name)) name = base + " " + n++;
+  zones.push({ name, points: Z.pts });
+  S.cfg = await api("/api/config", { zones });
+  toast("Zone '" + name + "' saved", true);
+  Z.pts = []; Z.naming = false; zoneUI(); drawZones();
+}
+async function deleteZone(i) {
+  const zones = S.cfg.zones.filter((_, j) => j !== i);
+  S.cfg = await api("/api/config", { zones }); zoneUI();
+}
+cv.addEventListener("click", ev => {
+  if (!Z.on || Z.naming) return;
+  const r = cv.getBoundingClientRect(), p = [(ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height];
+  if (Z.pts.length >= 3) {
+    const f = Z.pts[0];
+    if (Math.hypot((f[0] - p[0]) * r.width, (f[1] - p[1]) * r.height) < 12) return finishShape();
+  }
+  if (Z.pts.length < 30) Z.pts.push(p);
+  zoneUI(); drawZones();
+});
+cv.addEventListener("mousemove", ev => {
+  if (!Z.on || Z.naming || !Z.pts.length) return;
+  const r = cv.getBoundingClientRect(); Z.hover = [(ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height]; drawZones();
+});
+$("#zoneBtn").onclick = () => zoneMode(!Z.on);
+$("#zdone").onclick = () => zoneMode(false);
+$("#zundo").onclick = () => { Z.pts.pop(); zoneUI(); drawZones(); };
+$("#zsave").onclick = saveZone;
+$("#znameInput").addEventListener("keydown", ev => { if (ev.key === "Enter") { ev.preventDefault(); saveZone(); } });
+new ResizeObserver(drawZones).observe($("#frame"));
+
+/* ---------------- settings ---------------- */
+function openSettings() {
+  const c = S.cfg;
+  const preset = ["0", "1", "demo"].includes(c.camera) ? c.camera : "custom";
+  $("#sCamSel").value = preset; $("#sCam").value = preset === "custom" ? c.camera : "";
+  $("#sCamSel").querySelector("[value=demo]").disabled = !c.demo_available;
+  camSel();
+  $("#sName").value = c.camera_name;
+  document.querySelectorAll(".sWatch").forEach(x => { x.checked = c.watch.includes(x.value); });
+  $("#sLoiter").value = c.loiter_seconds; $("#sCrowd").value = c.crowd_size; $("#sAlone").value = c.unattended_seconds;
+  $("#sSound").checked = soundOn();
+  $("#sFps").value = Math.round(c.detect_fps); $("#sConf").value = c.confidence; rangeLabels();
+  $("#sGap").value = c.ai_gap_seconds; $("#sLimit").value = c.ai_daily_limit; $("#sKeep").value = c.keep_days;
+  $("#drawer").hidden = false; $("#setShade").hidden = false;
+}
+function closeSettings() { $("#drawer").hidden = true; $("#setShade").hidden = true; }
+function camSel() { const custom = $("#sCamSel").value === "custom"; $("#sCam").hidden = !custom; $("#sCamHelp").hidden = !custom; }
+function rangeLabels() { $("#sFpsVal").textContent = $("#sFps").value; $("#sConfVal").textContent = Math.round($("#sConf").value * 100) + "%"; }
+$("#sCamSel").onchange = camSel; $("#sFps").oninput = rangeLabels; $("#sConf").oninput = rangeLabels;
+$("#setBtn").onclick = openSettings; $("#setClose").onclick = closeSettings; $("#setCancel").onclick = closeSettings; $("#setShade").onclick = closeSettings;
+$("#setForm").addEventListener("submit", ev => { ev.preventDefault(); $("#setSave").click(); });
+$("#setSave").onclick = async () => {
+  const sel = $("#sCamSel").value, cam = sel === "custom" ? $("#sCam").value.trim() : sel;
+  if (!cam) { $("#sCam").focus(); return; }
+  try { localStorage.setItem("smartcam.sound", $("#sSound").checked ? "1" : "0"); } catch (e) {}
+  const num = id => Number($(id).value);
+  S.cfg = await api("/api/config", {
+    camera: cam, camera_name: $("#sName").value.trim() || "Camera 1",
+    watch: [...document.querySelectorAll(".sWatch")].filter(x => x.checked).map(x => x.value),
+    loiter_seconds: num("#sLoiter"), crowd_size: num("#sCrowd"), unattended_seconds: num("#sAlone"),
+    detect_fps: num("#sFps"), confidence: num("#sConf"),
+    ai_gap_seconds: num("#sGap"), ai_daily_limit: num("#sLimit"), keep_days: num("#sKeep"),
+  });
+  closeSettings(); toast("Settings saved", true); S.aiSig = "";
+};
+
+/* ---------------- keys ---------------- */
+document.addEventListener("keydown", ev => {
+  if (ev.key === "Escape") {
+    if (!$("#lightbox").hidden) $("#lightbox").hidden = true;
+    else if (!$("#drawer").hidden) closeSettings();
+    else if (Z.on) Z.naming ? (Z.naming = false, zoneUI(), drawZones()) : zoneMode(false);
+  } else if (Z.on && !Z.naming && ev.key === "Enter") { ev.preventDefault(); finishShape(); }
+  else if (Z.on && !Z.naming && ev.key === "Backspace" && Z.pts.length) { ev.preventDefault(); Z.pts.pop(); zoneUI(); drawZones(); }
+});
+
+/* ---------------- start ---------------- */
+let pollTimer = null;
+(async () => {
+  try { S.cfg = await api("/api/config"); await loadDay(S.day); } catch (e) {}
+  await poll();
+  pollTimer = setInterval(poll, 1000);
+  setInterval(() => { if (S.day === today()) refreshStats(); }, 30000);
+})();
+</script>
+</body>
+</html>
